@@ -11,6 +11,9 @@
 1. Randomized input of different sizes
 2. Adversarial input--graphs that already have a large matching, but far from perfect
 
+**Observation:** Faster than expected. This matches the fact that the paper
+presents a worse case analysis. Seem to work as well on adversarial inputs.
+
 ## Dani-Hayes
 
 ### Notes on implementation
