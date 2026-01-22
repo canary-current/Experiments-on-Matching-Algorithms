@@ -239,6 +239,23 @@ public:
             if (stuck_counter > 5) break; 
         }
     }
+
+    void solve_perfect() {
+        int stuck_counter = 0;
+        double target = n / 2;
+        
+        while (getMatchingSize() < target) {
+            int old_size = getMatchingSize();
+            bool found = findAugmentingPath();
+            
+            if (!found) {
+                stuck_counter++;
+            } else {
+                stuck_counter = 0;
+            }
+            if (stuck_counter > 5) break; 
+        }
+    }
 };
 
 // --- GRAPH GENERATORS ---
@@ -257,19 +274,19 @@ vector<pair<int, int>> generateRandomRegular(int n, int d) {
     return edges;
 }
 
-// 1. Non-Regular Graph (Hub and Spoke)
+// 1. Non-Regular Graph (Star + Chain)
 vector<pair<int, int>> generateNonRegular(int n) {
     vector<pair<int, int>> edges;
     // Hub at 0 connected to 50% of nodes
     for (int i = 1; i < n/2; ++i) edges.push_back({0, i});
     // Chain for the rest
     for (int i = n/2; i < n-1; ++i) edges.push_back({i, i+1});
-    // Connect chain to hub
+    // Connect chain to star
     edges.push_back({0, n/2});
     return edges;
 }
 
-// 2. The Hall Trap (Bridge Graph)
+// 2. (d + 1) cliques
 vector<pair<int, int>> generateBridgeGraph(int d, int& n_out) {
     vector<pair<int, int>> edges;
     // Clique 1: 0..d
@@ -300,8 +317,8 @@ int main() {
     // --- TEST 1: Original Random Regular Scaling ---
     cout << "\n[Test 1] Random Regular Graphs (Scaling Performance)" << endl;
     int d_rand = 10;
-    cout << setw(10) << "N" << setw(15) << "Time(ms)" << setw(15) << "Matched" << endl;
-    for (int n_rand = 500; n_rand <= 4000; n_rand *= 2) {
+    cout << setw(10) << "N" << setw(15) << "Time(ms)" << setw(15) << "Matched" << setw(15) << "Expected" << endl;
+    for (int n_rand = 500; n_rand <= 40000; n_rand *= 2) {
         auto edges = generateRandomRegular(n_rand, d_rand);
         GeneralGraph g(n_rand, edges);
         
@@ -311,47 +328,59 @@ int main() {
         
         cout << setw(10) << n_rand 
              << setw(15) << chrono::duration<double, milli>(end - start).count()
-             << setw(15) << g.getMatchingSize() << "/" << n_rand/2 << endl;
+             << setw(15) << g.getMatchingSize() << "/" << n_rand/2 
+             << setw(15) << ((double)n_rand) / 2.0 * (1.0 - 1.0 / (1.0 + (double)d_rand)) << endl;
     }
 
     // --- TEST 2: Non-Regular Graph ---
     {
-        cout << "\n[Test 2] Adversary: Non-Regular Graph (Hub + Chain)" << endl;
-        int n = 200;
-        auto edges = generateNonRegular(n);
-        GeneralGraph g(n, edges);
+        cout << "\n[Test 2] Adversary: Non-Regular Graph (Star + Chain)" << endl;
+        int d = 20;
+
+        for (int n = 500; n <= 40000; n *= 2) {
+            auto edges = generateNonRegular(n);
+            GeneralGraph g(n, edges);
         
-        auto start = chrono::high_resolution_clock::now();
-        g.solve();
-        auto end = chrono::high_resolution_clock::now();
-        
-        cout << "Matched: " << g.getMatchingSize() << "/" << n/2 << endl;
-        cout << "Time: " << chrono::duration<double, milli>(end - start).count() << " ms" << endl;
+            auto start = chrono::high_resolution_clock::now();
+            g.solve();
+            auto end = chrono::high_resolution_clock::now();
+            
+            cout << setw(10) << n
+                << setw(15) << chrono::duration<double, milli>(end - start).count()
+                << setw(15) << g.getMatchingSize() << "/" << n/2 
+                << setw(15) << ((double)n) / 2.0 * (1.0 - 1.0 / (1.0 + (double)d)) << endl;
+        }
     }
 
-    // --- TEST 3: The Hall Trap (Bridge) ---
+    // --- TEST 3: Thm 6.1 ---
     {
-        cout << "\n[Test 3] Adversary: Hall Trap (Bridge Graph, d=20)" << endl;
-        int d = 20;
+        cout << "\n[Test 3] Adversary: Thm 6.1" << endl;
+        
         int n;
-        auto edges = generateBridgeGraph(d, n);
-        GeneralGraph g(n, edges);
+
+        for (int d = 500; d <= 20000; d *= 2) {
+            auto edges = generateBridgeGraph(d + 1, n);
+            GeneralGraph g(n, edges);
         
-        auto start = chrono::high_resolution_clock::now();
-        g.solve();
-        auto end = chrono::high_resolution_clock::now();
-        
-        cout << "Matched: " << g.getMatchingSize() << "/" << n/2 << endl;
-        cout << "Time: " << chrono::duration<double, milli>(end - start).count() << " ms" << endl;
+            auto start = chrono::high_resolution_clock::now();
+            g.solve_perfect();
+            auto end = chrono::high_resolution_clock::now();
+            
+            cout << setw(10) << n 
+                << setw(15) << chrono::duration<double, milli>(end - start).count()
+                << setw(15) << g.getMatchingSize() << "/" << n/2 
+                << setw(15) << ((double)n) / 2.0 * (1.0 - 1.0 / (1.0 + (double)d)) << endl;
+        }
     }
 
     // --- TEST 4: 75% Matched Trap ---
     {
         cout << "\n[Test 4] Adversary: 75% Pre-Matched Trap" << endl;
         int d = 20;
-        int n;
+        int n = 4096;
         auto edges = generateBridgeGraph(d, n);
         GeneralGraph g(n, edges);
+        GeneralGraph g_prime = g;
         
         // Force internal matches to block bridge
         vector<pair<int, int>> bad_match;
@@ -370,13 +399,18 @@ int main() {
         int pre_matched = g.getMatchingSize();
         
         auto start = chrono::high_resolution_clock::now();
-        g.solve();
+        g.solve_perfect();
         auto end = chrono::high_resolution_clock::now();
         
         cout << "Pre-Injected: " << pre_matched << endl;
         cout << "Final Matched: " << g.getMatchingSize() << "/" << n/2 << endl;
         cout << "Time: " << chrono::duration<double, milli>(end - start).count() << " ms" << endl;
         cout << "Status: " << (g.getMatchingSize() > pre_matched ? "ESCAPED" : "TRAPPED") << endl;
+
+        start = chrono::high_resolution_clock::now();
+        g_prime.solve_perfect();
+        end = chrono::high_resolution_clock::now();
+        cout << "Time to solve from scratch: " << chrono::duration<double, milli>(end - start).count() << " ms" << endl;
     }
 
     return 0;
